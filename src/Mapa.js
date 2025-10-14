@@ -283,15 +283,13 @@ export default function Mapa() {
           <Marker
             position={current}
             icon={{
-              path: "M 0,-24 L -8,-8 L -24,-8 L -10,2 L -16,18 L 0,8 L 16,18 L 10,2 L 24,-8 L 8,-8 Z",
-              fillColor: "#d4af37",
-              fillOpacity: 1,
-              strokeColor: "#8b6f47",
-              strokeWeight: 2,
-              scale: 1,
+              url: require("./assets/pessoa1.png"), // caminho para a imagem
+              scaledSize: new window.google.maps.Size(60, 60), // tamanho do ícone no mapa
+              anchor: new window.google.maps.Point(30, 60), // ponto de ancoragem (pés do personagem)
             }}
           />
         )}
+
         {route.length > 1 && (
           <Polyline
             path={route}
