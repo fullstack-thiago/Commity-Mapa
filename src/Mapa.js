@@ -6,6 +6,50 @@ import {
   useJsApiLoader,
 } from "@react-google-maps/api";
 
+// Componente auxiliar para botões do menu
+function MenuButton({ icon, label, onClick }) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        padding: "12px 16px",
+        borderRadius: "25px",
+        background: isHovered
+          ? "linear-gradient(135deg, #d4af37 0%, #b8941f 100%)"
+          : "linear-gradient(135deg, rgba(45,24,16,0.95) 0%, rgba(31,15,8,0.95) 100%)",
+        border: "2px solid #8b6f47",
+        boxShadow: isHovered
+          ? "0 6px 20px rgba(212,175,55,0.5)"
+          : "0 4px 15px rgba(0,0,0,0.6)",
+        cursor: "pointer",
+        transition: "all 0.3s ease",
+        transform: isHovered ? "scale(1.05)" : "scale(1)",
+        minWidth: "160px",
+      }}
+    >
+      <span style={{ fontSize: "24px" }}>{icon}</span>
+      <span
+        style={{
+          fontFamily: "'Cinzel', 'Georgia', serif",
+          color: isHovered ? "#1a0f0a" : "#d4af37",
+          fontWeight: "bold",
+          fontSize: "14px",
+          letterSpacing: "1px",
+        }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
 const containerStyle = {
   width: "100vw",
   height: "100vh",
@@ -15,6 +59,64 @@ const centerDefault = {
   lat: -23.55052,
   lng: -46.633308,
 };
+
+// Estilo rústico/medieval para o mapa (inspirado em "Old Timey")
+const mapStyles = [
+  {
+    featureType: "administrative",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "poi",
+    stylers: [{ visibility: "simplified" }],
+  },
+  {
+    featureType: "road",
+    stylers: [{ visibility: "simplified" }],
+  },
+  {
+    featureType: "water",
+    stylers: [
+      { visibility: "simplified" },
+      { color: "#6b5d4f" },
+      { lightness: 20 },
+    ],
+  },
+  {
+    featureType: "transit",
+    stylers: [{ visibility: "simplified" }],
+  },
+  {
+    featureType: "landscape",
+    stylers: [
+      { visibility: "simplified" },
+      { color: "#8b7355" },
+      { lightness: 30 },
+    ],
+  },
+  {
+    featureType: "road.highway",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "road.local",
+    stylers: [
+      { visibility: "on" },
+      { color: "#a0826d" },
+    ],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "geometry",
+    stylers: [
+      { visibility: "on" },
+      { color: "#8b6f47" },
+    ],
+  },
+  {
+    stylers: [{ saturation: -60 }],
+  },
+];
 
 // Função haversine para distância em metros
 function haversineMeters(a, b) {
@@ -174,6 +276,7 @@ export default function Mapa() {
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: false,
+          styles: mapStyles,
         }}
       >
         {current && (
@@ -324,6 +427,8 @@ export default function Mapa() {
           style={{
             width: "80px",
             height: "80px",
+            bottom: "12px",
+            right: "-130px",
             borderRadius: "50%",
             background: menuOpen
               ? "linear-gradient(135deg, #d4af37 0%, #b8941f 100%)"
@@ -338,7 +443,7 @@ export default function Mapa() {
             cursor: "pointer",
             transition: "all 0.3s ease",
             transform: menuOpen ? "rotate(45deg) scale(1.1)" : "rotate(0deg) scale(1)",
-            position: "relative",
+            position: "fixed",
           }}
         >
           <svg width="50" height="50" viewBox="0 0 100 100">
@@ -358,43 +463,46 @@ export default function Mapa() {
         </div>
 
         {/* Botão de tracking (Iniciar/Parar) */}
-        {!menuOpen && (
-          <div
-            onClick={tracking ? stopTracking : startTracking}
-            style={{
-              position: "absolute",
-              bottom: "-60px",
-              left: "50%",
-              transform: "translateX(-50%)",
-              padding: "12px 24px",
-              borderRadius: "25px",
-              background: tracking
-                ? "linear-gradient(135deg, #e53935 0%, #b71c1c 100%)"
-                : "linear-gradient(135deg, #4caf50 0%, #2e7d32 100%)",
-              border: "2px solid #d4af37",
-              boxShadow: "0 4px 15px rgba(0,0,0,0.6)",
-              color: "white",
-              fontFamily: "'Cinzel', 'Georgia', serif",
-              fontWeight: "bold",
-              fontSize: "16px",
-              cursor: "pointer",
-              transition: "all 0.3s ease",
-              whiteSpace: "nowrap",
-              textTransform: "uppercase",
-              letterSpacing: "1px",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "translateX(-50%) scale(1.05)";
-              e.currentTarget.style.boxShadow = "0 6px 20px rgba(212,175,55,0.5)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "translateX(-50%) scale(1)";
-              e.currentTarget.style.boxShadow = "0 4px 15px rgba(0,0,0,0.6)";
-            }}
-          >
-            {tracking ? "⛔ PARAR" : "▶️ INICIAR"}
-          </div>
-        )}
+{!menuOpen && (
+  <div
+    onClick={tracking ? stopTracking : startTracking}
+    style={{
+      position: "fixed",
+      bottom: "30px",
+      right: "-10px", // distância da borda direita
+      padding: "12px 24px",
+      borderRadius: "25px",
+      background: tracking
+        ? "linear-gradient(135deg, #e53935 0%, #b71c1c 100%)"
+        : "linear-gradient(135deg, #4caf50 0%, #2e7d32 100%)",
+      border: "2px solid #d4af37",
+      boxShadow: "0 4px 15px rgba(0,0,0,0.6)",
+      color: "white",
+      fontFamily: "'Cinzel', 'Georgia', serif",
+      fontWeight: "bold",
+      fontSize: "16px",
+      cursor: "pointer",
+      transition: "all 0.3s ease",
+      whiteSpace: "nowrap",
+      textTransform: "uppercase",
+      letterSpacing: "1px",
+      zIndex: 1000,
+    }}
+    onMouseEnter={(e) => {
+      e.currentTarget.style.transform = "scale(1.05)";
+      e.currentTarget.style.boxShadow =
+        "0 6px 20px rgba(212,175,55,0.5)";
+    }}
+    onMouseLeave={(e) => {
+      e.currentTarget.style.transform = "scale(1)";
+      e.currentTarget.style.boxShadow =
+        "0 4px 15px rgba(0,0,0,0.6)";
+    }}
+  >
+    {tracking ? "⛔ PARAR" : "▶️ INICIAR"}
+  </div>
+)}
+
       </div>
 
       {/* Importar fonte Cinzel e animações */}
@@ -417,48 +525,3 @@ export default function Mapa() {
     </div>
   );
 }
-
-// Componente auxiliar para botões do menu
-function MenuButton({ icon, label, onClick }) {
-  const [isHovered, setIsHovered] = useState(false);
-
-  return (
-    <div
-      onClick={onClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "12px",
-        padding: "12px 16px",
-        borderRadius: "25px",
-        background: isHovered
-          ? "linear-gradient(135deg, #d4af37 0%, #b8941f 100%)"
-          : "linear-gradient(135deg, rgba(45,24,16,0.95) 0%, rgba(31,15,8,0.95) 100%)",
-        border: "2px solid #8b6f47",
-        boxShadow: isHovered
-          ? "0 6px 20px rgba(212,175,55,0.5)"
-          : "0 4px 15px rgba(0,0,0,0.6)",
-        cursor: "pointer",
-        transition: "all 0.3s ease",
-        transform: isHovered ? "scale(1.05)" : "scale(1)",
-        minWidth: "160px",
-      }}
-    >
-      <span style={{ fontSize: "24px" }}>{icon}</span>
-      <span
-        style={{
-          fontFamily: "'Cinzel', 'Georgia', serif",
-          color: isHovered ? "#1a0f0a" : "#d4af37",
-          fontWeight: "bold",
-          fontSize: "14px",
-          letterSpacing: "1px",
-        }}
-      >
-        {label}
-      </span>
-    </div>
-  );
-}
-
