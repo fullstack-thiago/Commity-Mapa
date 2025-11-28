@@ -601,9 +601,6 @@ export default function Mapa() {
           <span>🗺️</span><span style={{ fontWeight: "bold" }}>{distanceKm.toFixed(2)} km</span>
         </div>
         <div style={{ marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
-          <span>📍</span><span style={{ fontWeight: "bold" }}>{route.length} pontos</span>
-        </div>
-        <div style={{ marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
           <span>🔥</span><span style={{ fontWeight: "bold" }}>{calories.toFixed(0)} kcal</span>
         </div>
 
@@ -618,7 +615,7 @@ export default function Mapa() {
       {duelActive && duelOpponent && (
         <div style={{
           position: "fixed",
-          top: "180px",
+          top: "120px",
           right: "20px",
           zIndex: 1150,
           background: "linear-gradient(180deg, rgba(45,24,16,0.95), rgba(31,15,8,0.95))",
@@ -765,8 +762,8 @@ export default function Mapa() {
 
       {/* PROFILE MODAL (mantido) */}
       {profileOpen && (
-        <div onClick={closeProfile} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{
+        <div className="modal-backdrop" onClick={closeProfile} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{
             width: "min(820px, 92%)", background: "linear-gradient(180deg, #2b1a12 0%, #3b2818 100%)", border: "3px solid #d4af37", borderRadius: 12, padding: 20,
             display: "flex", gap: 20, boxShadow: "0 10px 40px rgba(0,0,0,0.7)", color: "#d4af37", fontFamily: "'Cinzel', 'Georgia', serif",
           }}>
@@ -831,8 +828,8 @@ export default function Mapa() {
 
       {/* INVENTORY MODAL */}
       {inventoryOpen && (
-        <div onClick={() => setInventoryOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(720px, 94%)", background: "linear-gradient(180deg,#2b1a12 0%,#3b2818 100%)", border: "3px solid #d4af37", borderRadius: 12, padding: 18, color: "#d4af37", fontFamily: "'Cinzel', 'Georgia', serif" }}>
+        <div className="modal-backdrop" onClick={() => setInventoryOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ width: "min(720px, 94%)", background: "linear-gradient(180deg,#2b1a12 0%,#3b2818 100%)", border: "3px solid #d4af37", borderRadius: 12, padding: 18, color: "#d4af37", fontFamily: "'Cinzel', 'Georgia', serif" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <div style={{ fontSize: 20, fontWeight: 700, color: "#ffd27a" }}>Inventário</div>
               <button onClick={() => setInventoryOpen(false)} style={{ background: "transparent", border: "none", color: "#d4af37", fontSize: 22, cursor: "pointer" }}>×</button>
@@ -849,7 +846,8 @@ export default function Mapa() {
                     <div style={{ fontSize: 12, color: "#e8d7b0" }}>{it.desc}</div>
                   </div>
                   <div>
-                    <button onClick={() => handleUseInventoryItem(it.id)} style={{ padding: "8px 10px", borderRadius: 8, background: "linear-gradient(135deg,#d4af37 0%,#b8941f 100%)", border: "none", cursor: "pointer", fontWeight: "700" }} disabled={it.qty <= 0}>
+                    {/* botão USAR em branco conforme solicitado */}
+                    <button onClick={() => handleUseInventoryItem(it.id)} style={{ padding: "8px 10px", borderRadius: 8, background: "#d4af37", border: "1px solid #2b1a12", cursor: "pointer", fontWeight: "700", color: "#2b1a12" }} disabled={it.qty <= 0}>
                       Usar
                     </button>
                   </div>
@@ -862,10 +860,10 @@ export default function Mapa() {
 
       {/* MISSIONS MODAL */}
       {questsOpen && (
-        <div onClick={() => setQuestsOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(640px, 94%)", background: "linear-gradient(180deg,#2b1a12 0%,#3b2818 100%)", border: "3px solid #d4af37", borderRadius: 12, padding: 18, color: "#d4af37", fontFamily: "'Cinzel', 'Georgia', serif" }}>
+        <div className="modal-backdrop" onClick={() => setQuestsOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ width: "min(640px, 94%)", background: "linear-gradient(180deg,#2b1a12 0%,#3b2818 100%)", border: "3px solid #d4af37", borderRadius: 12, padding: 18, color: "#d4af37", fontFamily: "'Cinzel', 'Georgia', serif" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <div style={{ fontSize: 20, fontWeight: 700, color: "#ffd27a" }}>Missões Diárias</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#ffd27a" }}>Missões</div>
               <button onClick={() => setQuestsOpen(false)} style={{ background: "transparent", border: "none", color: "#d4af37", fontSize: 22, cursor: "pointer" }}>×</button>
             </div>
 
@@ -893,8 +891,8 @@ export default function Mapa() {
 
       {/* MATCHMAKING / BATTLE SEARCH MODAL */}
       {matchmakingOpen && (
-        <div onClick={() => { setMatchmakingOpen(false); cancelSearchingBattle(); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(680px,94%)", background: "linear-gradient(180deg,#2b1a12 0%,#3b2818 100%)", border: "3px solid #d4af37", borderRadius: 12, padding: 18, color: "#d4af37", fontFamily: "'Cinzel', 'Georgia', serif" }}>
+        <div className="modal-backdrop" onClick={() => { setMatchmakingOpen(false); cancelSearchingBattle(); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ width: "min(680px,94%)", background: "linear-gradient(180deg,#2b1a12 0%,#3b2818 100%)", border: "3px solid #d4af37", borderRadius: 12, padding: 18, color: "#d4af37", fontFamily: "'Cinzel', 'Georgia', serif" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ fontSize: 20, fontWeight: 700, color: "#ffd27a" }}>Buscar Batalha</div>
               <button onClick={() => { setMatchmakingOpen(false); cancelSearchingBattle(); }} style={{ background: "transparent", border: "none", color: "#d4af37", fontSize: 22, cursor: "pointer" }}>×</button>
@@ -910,7 +908,7 @@ export default function Mapa() {
               </div>
 
               {!searchingBattle && !matchedOpponent && (
-                <button onClick={startSearchingBattle} style={{ padding: "8px 12px", borderRadius: 8, background: "linear-gradient(135deg,#d4af37 0%,#b8941f 100%)", border: "none", cursor: "pointer", fontWeight: 700 }}>
+                <button onClick={startSearchingBattle} style={{ padding: "8px 12px", borderRadius: 8, background: "#d4af37", border: "1px solid #2b1a12", cursor: "pointer", fontWeight: 700, color: "#2b1a12" }}>
                   Buscar jogador
                 </button>
               )}
@@ -930,8 +928,9 @@ export default function Mapa() {
                     <div style={{ fontSize: 13, color: "#e8d7b0" }}>Nível {matchedOpponent.level}</div>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={acceptMatchAndStartDuel} style={{ padding: "8px 12px", borderRadius: 8, background: "linear-gradient(135deg,#4caf50 0%,#2e7d32 100%)", border: "none", cursor: "pointer", fontWeight: 700 }}>Aceitar</button>
-                    <button onClick={declineMatch} style={{ padding: "8px 12px", borderRadius: 8, background: "linear-gradient(135deg,#e53935 0%,#b71c1c 100%)", border: "none", cursor: "pointer", fontWeight: 700 }}>Recusar</button>
+                    {/* botões Aceitar/Recusar em branco conforme solicitado */}
+                    <button onClick={acceptMatchAndStartDuel} style={{ padding: "8px 12px", borderRadius: 8, background: "#2ab300ff", border: "1px solid #26a100ff", cursor: "pointer", fontWeight: 700, color: "#ffffffff" }}>Aceitar</button>
+                    <button onClick={declineMatch} style={{ padding: "8px 12px", borderRadius: 8, background: "#c20000ff", border: "1px solid #bb0000ff", cursor: "pointer", fontWeight: 700, color: "#ffffffff" }}>Recusar</button>
                   </div>
                 </div>
               )}
@@ -944,8 +943,8 @@ export default function Mapa() {
 
       {/* BATTLE MODAL (mantido para compatibilidade, mas normalmente não será usado no novo fluxo) */}
       {battleOpen && (
-        <div onClick={() => { setBattleOpen(false); setBattleActive(false); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(720px, 96%)", background: "linear-gradient(180deg,#2b1a12 0%,#3b2818 100%)", border: "3px solid #d4af37", borderRadius: 12, padding: 18, color: "#d4af37", fontFamily: "'Cinzel', 'Georgia', serif" }}>
+        <div className="modal-backdrop" onClick={() => { setBattleOpen(false); setBattleActive(false); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000 }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ width: "min(720px, 96%)", background: "linear-gradient(180deg,#2b1a12 0%,#3b2818 100%)", border: "3px solid #d4af37", borderRadius: 12, padding: 18, color: "#d4af37", fontFamily: "'Cinzel', 'Georgia', serif" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <div style={{ fontSize: 20, fontWeight: 700, color: "#ffd27a" }}>Batalha</div>
               <button onClick={() => { setBattleOpen(false); setBattleActive(false); }} style={{ background: "transparent", border: "none", color: "#d4af37", fontSize: 22, cursor: "pointer" }}>×</button>
@@ -981,10 +980,37 @@ export default function Mapa() {
         </div>
       )}
 
-      {/* Fonte e animação */}
+      {/* Fonte e animação + estilos responsivos para modais */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&display=swap');
         @keyframes fadeInUp { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* classes adicionadas para responsividade dos modais */
+        .modal-backdrop { display:flex; justify-content:center; align-items:center; }
+        .modal-content { max-height: 90vh; overflow: auto; box-sizing: border-box; }
+
+        /* Mobile: telas pequenas (iPhone 13 ~ 390px width) */
+        @media (max-width: 430px) {
+          .modal-backdrop { justify-content: center; align-items: flex-end; padding-bottom: 0; }
+          .modal-content {
+            width: 100% !important;
+            height: 100% !important;
+            max-height: 100% !important;
+            border-radius: 0 !important;
+            padding: 16px !important;
+            display: block;
+            overflow: auto;
+          }
+
+          /* Aumentar toque em botões dentro dos modais */
+          .modal-content button { min-height: 44px; font-size: 16px; }
+
+          /* Forçar grid do inventario para 1 coluna no mobile */
+          .modal-content > div[style*="display: grid"] {
+            grid-template-columns: 1fr !important;
+          }
+        }
       `}</style>
     </div>
   );
