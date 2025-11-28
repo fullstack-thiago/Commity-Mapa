@@ -835,25 +835,70 @@ export default function Mapa() {
               <button onClick={() => setInventoryOpen(false)} style={{ background: "transparent", border: "none", color: "#d4af37", fontSize: 22, cursor: "pointer" }}>×</button>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              {inventoryItems.map((it) => (
-                <div key={it.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: 10, borderRadius: 8, background: "rgba(0,0,0,0.12)", border: "1px solid rgba(139,111,71,0.12)" }}>
-                  <div style={{ width: 56, height: 56, borderRadius: 8, background: "rgba(0,0,0,0.2)", display: "flex", justifyContent: "center", alignItems: "center", fontSize: 24 }}>
-                    {it.id === "boost_x2" ? "⚡" : it.id === "shield_1h" ? "🛡️" : "⚗️"}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, color: "#ffd27a" }}>{it.name} <span style={{ fontWeight: 400, color: "#e8d7b0" }}>x{it.qty}</span></div>
-                    <div style={{ fontSize: 12, color: "#e8d7b0" }}>{it.desc}</div>
-                  </div>
-                  <div>
-                    {/* botão USAR em branco conforme solicitado */}
-                    <button onClick={() => handleUseInventoryItem(it.id)} style={{ padding: "8px 10px", borderRadius: 8, background: "#d4af37", border: "1px solid #2b1a12", cursor: "pointer", fontWeight: "700", color: "#2b1a12" }} disabled={it.qty <= 0}>
-                      Usar
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <div className="inventory-grid">
+  {inventoryItems.map((it) => (
+    <div
+      key={it.id}
+      style={{
+        display: "flex",
+        gap: 10,
+        alignItems: "center",
+        padding: 10,
+        borderRadius: 8,
+        background: "rgba(0,0,0,0.12)",
+        border: "1px solid rgba(139,111,71,0.12)"
+      }}
+    >
+      <div
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: 8,
+          background: "rgba(0,0,0,0.2)",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          fontSize: 24,
+          flexShrink: 0
+        }}
+      >
+        {it.id === "boost_x2" ? "⚡" : it.id === "shield_1h" ? "🛡️" : "⚗️"}
+      </div>
+
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 700, color: "#ffd27a" }}>
+          {it.name}{" "}
+          <span style={{ fontWeight: 400, color: "#e8d7b0" }}>
+            x{it.qty}
+          </span>
+        </div>
+        <div style={{ fontSize: 12, color: "#e8d7b0" }}>
+          {it.desc}
+        </div>
+      </div>
+
+      <div>
+        {/* botão USAR em branco conforme solicitado */}
+        <button
+          onClick={() => handleUseInventoryItem(it.id)}
+          style={{
+            padding: "10px 14px",
+            borderRadius: 8,
+            background: "#fff",
+            border: "1px solid #ccc",
+            cursor: "pointer",
+            fontWeight: "700",
+            color: "#2b1a12"
+          }}
+          disabled={it.qty <= 0}
+        >
+          Usar
+        </button>
+      </div>
+    </div>
+  ))}
+</div>
+
           </div>
         </div>
       )}
@@ -981,37 +1026,100 @@ export default function Mapa() {
       )}
 
       {/* Fonte e animação + estilos responsivos para modais */}
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&display=swap');
-        @keyframes fadeInUp { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
-        @keyframes spin { to { transform: rotate(360deg); } }
+      {/* Fonte, animação e estilos responsivos atualizados para modais (SUBSTITUA seu bloco <style> por este) */}
+<style>{`
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&display=swap');
+  @keyframes fadeInUp { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* classes adicionadas para responsividade dos modais */
-        .modal-backdrop { display:flex; justify-content:center; align-items:center; }
-        .modal-content { max-height: 90vh; overflow: auto; box-sizing: border-box; }
+  /* backdrop geral: centraliza e permite padding para mobile */
+  .modal-backdrop {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 16px;
+    box-sizing: border-box;
+  }
 
-        /* Mobile: telas pequenas (iPhone 13 ~ 390px width) */
-        @media (max-width: 430px) {
-          .modal-backdrop { justify-content: center; align-items: flex-end; padding-bottom: 0; }
-          .modal-content {
-            width: 100% !important;
-            height: 100% !important;
-            max-height: 100% !important;
-            border-radius: 0 !important;
-            padding: 16px !important;
-            display: block;
-            overflow: auto;
-          }
+  /* conteúdo dos modais: caixa flutuante, com limites de tamanho e scroll interno */
+  .modal-content {
+    width: 720px;                 /* tamanho base para desktop */
+    max-width: calc(100% - 48px); /* sempre respeita a tela */
+    max-height: 80vh;             /* nunca ultrapassa 80% da altura da tela */
+    overflow: auto;               /* scroll interno se necessário */
+    box-sizing: border-box;
+    border-radius: 12px;
+    padding: 18px;
+    background: linear-gradient(180deg,#2b1a12 0%,#3b2818 100%);
+    border: 3px solid #d4af37;
+    color: #d4af37;
+    font-family: 'Cinzel', 'Georgia', serif;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.7);
+  }
 
-          /* Aumentar toque em botões dentro dos modais */
-          .modal-content button { min-height: 44px; font-size: 16px; }
+  /* se você usa estilos inline nos elementos, esta regra garante overflow dentro dos painéis */
+  .modal-content .scrollable {
+    overflow: auto;
+    max-height: 64vh;
+  }
 
-          /* Forçar grid do inventario para 1 coluna no mobile */
-          .modal-content > div[style*="display: grid"] {
-            grid-template-columns: 1fr !important;
-          }
-        }
-      `}</style>
+  /* inventário: grid padrão 2 colunas */
+  .modal-content .inventory-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  /* botões dentro do modal: toca facil no mobile */
+  .modal-content button {
+    min-height: 44px;
+    min-width: 64px;
+  }
+
+  /* MOBILE: caixas continuam flutuantes, mas mais estreitas e mais altas (sem ocupar 100% da tela) */
+  @media (max-width: 430px) {
+    .modal-backdrop {
+      align-items: center;
+      padding: 10px;
+    }
+    .modal-content {
+      width: calc(100% - 24px); /* bem encaixado à margem lateral */
+      max-width: calc(100% - 24px);
+      max-height: 86vh;         /* permite barra de status / notch */
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    /* Inventário: 1 coluna para melhor leitura */
+    .modal-content .inventory-grid {
+      grid-template-columns: 1fr;
+    }
+
+    /* reduz gaps em áreas com muitas linhas para caber melhor */
+    .modal-content { gap: 10px; }
+
+    /* aumenta legibilidade dos títulos e botões */
+    .modal-content h1, .modal-content h2, .modal-content h3 {
+      font-size: 18px;
+    }
+
+    /* garante que botões brancos com texto escuro fiquem legíveis e com padding maior */
+    .modal-content button {
+      padding: 12px 14px !important;
+      font-size: 16px !important;
+    }
+  }
+
+  /*  tablet / médio */
+  @media (min-width: 431px) and (max-width: 1024px) {
+    .modal-content {
+      width: min(720px, 92%);
+      max-height: 84vh;
+      padding: 16px;
+    }
+  }
+`}</style>
+
     </div>
   );
 }
