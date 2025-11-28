@@ -537,14 +537,7 @@ export default function Mapa() {
         center={current ?? centerDefault}
         zoom={16}
         onLoad={(map) => (mapRef.current = map)}
-        options={{
-          disableDefaultUI: true,
-          zoomControl: false,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false,
-          styles: mapStyles,
-        }}
+        options={{ disableDefaultUI: true, zoomControl: false, mapTypeControl: false, streetViewControl: false, fullscreenControl: false, styles: mapStyles }}
       >
         {current && (
           <Marker
@@ -556,16 +549,12 @@ export default function Mapa() {
             }}
           />
         )}
-
         {route.length > 1 && (
-          <Polyline
-            path={route}
-            options={{
-              strokeColor: "#d4af37",
-              strokeWeight: 4,
-              strokeOpacity: 0.9,
-            }}
-          />
+          <>
+            {/* faixa estilo Waze: sombra + faixa interna */}
+            <Polyline path={route} options={{ strokeColor: "#0a0a0a", strokeWeight: 16, strokeOpacity: 0.65, geodesic: false }} />
+            <Polyline path={route} options={{ strokeColor: "#00e5ff", strokeWeight: 10, strokeOpacity: 0.95, geodesic: false }} />
+          </>
         )}
       </GoogleMap>
 
@@ -615,7 +604,7 @@ export default function Mapa() {
       {duelActive && duelOpponent && (
         <div style={{
           position: "fixed",
-          top: "120px",
+          top: "160px",
           right: "20px",
           zIndex: 1150,
           background: "linear-gradient(180deg, rgba(45,24,16,0.95), rgba(31,15,8,0.95))",
@@ -757,7 +746,6 @@ export default function Mapa() {
             {tracking ? "⛔ PARAR" : "▶️ INICIAR"}
           </div>
         )}
-
       </div>
 
       {/* PROFILE MODAL (mantido) */}
@@ -884,8 +872,8 @@ export default function Mapa() {
           style={{
             padding: "10px 14px",
             borderRadius: 8,
-            background: "#fff",
-            border: "1px solid #ccc",
+            background: "#d4af37",
+            border: "1px solid #d4af37",
             cursor: "pointer",
             fontWeight: "700",
             color: "#2b1a12"
@@ -934,7 +922,7 @@ export default function Mapa() {
         </div>
       )}
 
-      {/* MATCHMAKING / BATTLE SEARCH MODAL */}
+      {/* MATCHMAKING / BATTLE SEARCH MODAL - LAYOUT AJUSTADO: botão em linha separada */}
       {matchmakingOpen && (
         <div className="modal-backdrop" onClick={() => { setMatchmakingOpen(false); cancelSearchingBattle(); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ width: "min(680px,94%)", background: "linear-gradient(180deg,#2b1a12 0%,#3b2818 100%)", border: "3px solid #d4af37", borderRadius: 12, padding: 18, color: "#d4af37", fontFamily: "'Cinzel', 'Georgia', serif" }}>
@@ -943,42 +931,61 @@ export default function Mapa() {
               <button onClick={() => { setMatchmakingOpen(false); cancelSearchingBattle(); }} style={{ background: "transparent", border: "none", color: "#d4af37", fontSize: 22, cursor: "pointer" }}>×</button>
             </div>
 
-            <div style={{ marginTop: 12, display: "flex", gap: 12, alignItems: "center" }}>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <label style={{ fontSize: 13, color: "#e8d7b0" }}>Modo:</label>
-                <select value={selectedMode} onChange={(e) => setSelectedMode(e.target.value)} style={{ padding: "6px 8px", borderRadius: 6, background: "rgba(0,0,0,0.15)", border: "1px solid #8b6f47", color: "#d4af37" }}>
-                  <option>Casual</option>
-                  <option>Ranqueada</option>
-                </select>
+            {/* Conteúdo reorganizado em coluna: modos em cima, ação (buscar) em linha abaixo, depois status/resultado */}
+            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+              {/* Linha superior: seleção de modo */}
+              <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <label style={{ fontSize: 13, color: "#e8d7b0" }}>Modo:</label>
+                  <select value={selectedMode} onChange={(e) => setSelectedMode(e.target.value)} style={{ padding: "6px 8px", borderRadius: 6, background: "rgba(0,0,0,0.15)", border: "1px solid #8b6f47", color: "#d4af37" }}>
+                    <option>Casual</option>
+                    <option>Ranqueada</option>
+                  </select>
+                </div>
               </div>
 
-              {!searchingBattle && !matchedOpponent && (
-                <button onClick={startSearchingBattle} style={{ padding: "8px 12px", borderRadius: 8, background: "#d4af37", border: "1px solid #2b1a12", cursor: "pointer", fontWeight: 700, color: "#2b1a12" }}>
-                  Buscar jogador
-                </button>
-              )}
+              {/* Linha de ação: botão BUSCAR ocupa 100% da largura */}
+              <div>
+                {!searchingBattle && !matchedOpponent && (
+                  <button onClick={startSearchingBattle} style={{ width: "100%", padding: "12px 14px", borderRadius: 8, background: "#d4af37", border: "1px solid #2b1a12", cursor: "pointer", fontWeight: 700, color: "#2b1a12" }}>
+                    Buscar jogador
+                  </button>
+                )}
 
-              {searchingBattle && (
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  <div style={{ fontSize: 13, color: "#e8d7b0" }}>Buscando jogador...</div>
-                  <div style={{ width: 18, height: 18, border: "3px solid rgba(212,175,55,0.2)", borderTopColor: "#ffd27a", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
-                  <button onClick={cancelSearchingBattle} style={{ padding: "6px 10px", borderRadius: 8, background: "transparent", border: "1px solid #8b6f47", color: "#d4af37" }}>Cancelar</button>
-                </div>
-              )}
+                {searchingBattle && (
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ fontSize: 13, color: "#e8d7b0" }}>Buscando jogador...</div>
+                      <div style={{ width: 18, height: 18, border: "3px solid rgba(212,175,55,0.2)", borderTopColor: "#ffd27a", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                    </div>
+                    <div>
+                      <button onClick={cancelSearchingBattle} style={{ padding: "8px 12px", borderRadius: 8, background: "transparent", border: "1px solid #8b6f47", color: "#d4af37" }}>Cancelar</button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
-              {matchedOpponent && (
-                <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontWeight: 700, color: "#ffd27a" }}>{matchedOpponent.name}</div>
-                    <div style={{ fontSize: 13, color: "#e8d7b0" }}>Nível {matchedOpponent.level}</div>
+              {/* Linha de resultado: aparece após a busca (aceitar/recusar) */}
+              <div>
+                {matchedOpponent && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "stretch", justifyContent: "center", padding: 12, borderRadius: 8, background: "rgba(0,0,0,0.12)", border: "1px solid rgba(139,111,71,0.12)" }}>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontWeight: 700, color: "#ffd27a" }}>{matchedOpponent.name}</div>
+                      <div style={{ fontSize: 13, color: "#e8d7b0" }}>Nível {matchedOpponent.level}</div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 6 }}>
+                      {/* botões Aceitar/Recusar em branco com texto escuro */}
+                      <button onClick={acceptMatchAndStartDuel} style={{ padding: "8px 12px", borderRadius: 8, background: "#09c003ff", border: "1px solid rgba(0,0,0,0.08)", cursor: "pointer", fontWeight: 700, color: "#ffffffff" }}>
+                        Aceitar
+                      </button>
+                      <button onClick={declineMatch} style={{ padding: "8px 12px", borderRadius: 8, background: "#ce0303ff", border: "1px solid rgba(0,0,0,0.08)", cursor: "pointer", fontWeight: 700, color: "#f8f8f8ff" }}>
+                        Recusar
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    {/* botões Aceitar/Recusar em branco conforme solicitado */}
-                    <button onClick={acceptMatchAndStartDuel} style={{ padding: "8px 12px", borderRadius: 8, background: "#2ab300ff", border: "1px solid #26a100ff", cursor: "pointer", fontWeight: 700, color: "#ffffffff" }}>Aceitar</button>
-                    <button onClick={declineMatch} style={{ padding: "8px 12px", borderRadius: 8, background: "#c20000ff", border: "1px solid #bb0000ff", cursor: "pointer", fontWeight: 700, color: "#ffffffff" }}>Recusar</button>
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -1026,8 +1033,7 @@ export default function Mapa() {
       )}
 
       {/* Fonte e animação + estilos responsivos para modais */}
-      {/* Fonte, animação e estilos responsivos atualizados para modais (SUBSTITUA seu bloco <style> por este) */}
-<style>{`
+      <style>{`
   @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&display=swap');
   @keyframes fadeInUp { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -1119,7 +1125,6 @@ export default function Mapa() {
     }
   }
 `}</style>
-
     </div>
   );
 }
