@@ -3,6 +3,7 @@ import {
   GoogleMap,
   Marker,
   Polyline,
+  Polygon,
   useJsApiLoader,
 } from "@react-google-maps/api";
 
@@ -81,7 +82,9 @@ function haversineMeters(a, b) {
 export default function Mapa() {
   // localização / rota / tracking
   const [current, setCurrent] = useState(null);
-  const [route, setRoute] = useState([]);
+  const [route, setRoute] = useState([]); // raw GPS points
+  const [routeSnapped, setRouteSnapped] = useState([]); // route after snap-to-roads
+  const [roadPolygon, setRoadPolygon] = useState([]); // polygon coordinates for "filled" road
   const [tracking, setTracking] = useState(false);
   const [distance, setDistance] = useState(0); // metros
   const watchId = useRef(null);
@@ -111,11 +114,10 @@ export default function Mapa() {
   const [inventoryItems, setInventoryItems] = useState([
     { id: "boost_x2", name: "Boost x2 (1h)", qty: 1, desc: "Dobra a quilometragem por 1 hora." },
     { id: "shield_1h", name: "Escudo (1h)", qty: 1, desc: "Impede pareamento em batalhas por 1 hora." },
-    // itens extras de exemplo
   ]);
 
   // efeitos ativos: guardamos timestamps (ms) de expiração
-  const [boostExpiresAt, setBoostExpiresAt] = useState(null); // timestamp ms
+  const [boostExpiresAt, setBoostExpiresAt] = useState(null);
   const [shieldExpiresAt, setShieldExpiresAt] = useState(null);
 
   // Missões como metas (2km,5km,7km)
@@ -134,21 +136,24 @@ export default function Mapa() {
 
   // Duelo de caminhada (novo)
   const [duelActive, setDuelActive] = useState(false);
-  const [duelOpponent, setDuelOpponent] = useState(null); // { id, name, level }
-  const [duelOpponentDistance, setDuelOpponentDistance] = useState(0); // metros
-  const duelTimerRef = useRef(null); // interval that updates opponent distance
+  const [duelOpponent, setDuelOpponent] = useState(null);
+  const [duelOpponentDistance, setDuelOpponentDistance] = useState(0);
+  const duelTimerRef = useRef(null);
   const duelEndTimeoutRef = useRef(null);
-  const DUEL_DURATION_SECONDS = 10 * 60; // 10 minutos, ajuste se quiser
+  const DUEL_DURATION_SECONDS = 10 * 60;
   const [duelSecondsElapsed, setDuelSecondsElapsed] = useState(0);
 
-  // Batalha real (após aceitar) -- vamos manter para compatibilidade, mas não vamos abrir a modal de "luta"
+  // Batalha real state
   const [battleLog, setBattleLog] = useState([]);
   const [enemyHp, setEnemyHp] = useState(100);
   const [playerHp, setPlayerHp] = useState(100);
   const [battleActive, setBattleActive] = useState(false);
 
-  // Google maps loader
-  const { isLoaded } = useJsApiLoader({ googleMapsApiKey: "AIzaSyDRxsExWSYPrpobbvyd1sIm0lUPa1OKbAo" });
+  // Google maps loader: adicionamos 'geometry' porque vamos usar computeOffset
+  const { isLoaded } = useJsApiLoader({
+    googleMapsApiKey: "AIzaSyDRxsExWSYPrpobbvyd1sIm0lUPa1OKbAo",
+    libraries: ["geometry"],
+  });
 
   // refs to read latest values inside timeouts/intervals
   const distanceRef = useRef(distance);
@@ -190,11 +195,125 @@ export default function Mapa() {
     };
   }, []);
 
-  // Timer do tracking (iniciado apenas pelo beginTrackingImmediate)
-  // ---------- MOVED: beginTrackingImmediate contém a lógica real que antes estava em startTracking ----------
+  // ------------------ SNAP-TO-ROADS + ROAD POLYGON ------------------
+  // Ajuste estes valores conforme desejado:
+  const SNAP_BATCH_SIZE = 8; // quantos pontos por chamada snap
+  const SNAP_DELAY_MS = 700; // debounce/espera entre snaps (para não chamar toda posição)
+  const ROAD_HALF_WIDTH_METERS = 6; // metade da largura do "preenchimento" da rua
+
+  const snapQueueRef = useRef([]); // acumula pontos para enviar em batch
+  const snapTimerRef = useRef(null);
+
+  // Constrói string path para Roads API (lat,lng|lat,lng)
+  function buildPathParam(points) {
+    return points.map((p) => `${p.lat},${p.lng}`).join("|");
+  }
+
+  // Chama Google Roads API Snap to Roads (interpolate=true)
+  async function snapToRoadsBatch(points) {
+    if (!points || points.length === 0) return [];
+    const key = "AIzaSyDRxsExWSYPrpobbvyd1sIm0lUPa1OKbAo"; // sua chave (atenção ao uso em cliente)
+    const path = buildPathParam(points);
+    try {
+      const url = `https://roads.googleapis.com/v1/snapToRoads?path=${encodeURIComponent(path)}&interpolate=true&key=${key}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        console.warn("Roads API erro:", res.status, await res.text());
+        return [];
+      }
+      const data = await res.json();
+      if (!data.snappedPoints) return [];
+      // transforma em [{lat,lng}, ...] na ordem retornada
+      const snapped = data.snappedPoints.map((sp) => ({
+        lat: sp.location.latitude,
+        lng: sp.location.longitude,
+      }));
+      return snapped;
+    } catch (e) {
+      console.error("Erro snapToRoads:", e);
+      return [];
+    }
+  }
+
+  // Cria polígono "buffer" a partir do path, largura em metros
+  function createRoadPolygonFromPath(path, halfWidthMeters = ROAD_HALF_WIDTH_METERS) {
+    if (!isLoaded || !path || path.length < 2) return [];
+    const left = [];
+    const right = [];
+    for (let i = 0; i < path.length; i++) {
+      const curr = path[i];
+      // definir heading: se houver próximo, use heading para próximo; senão use heading do anterior
+      let heading;
+      if (i < path.length - 1) {
+        heading = window.google.maps.geometry.spherical.computeHeading(curr, path[i + 1]);
+      } else {
+        heading = window.google.maps.geometry.spherical.computeHeading(path[i - 1], curr);
+      }
+      // perpendiculars:
+      const leftPoint = window.google.maps.geometry.spherical.computeOffset(curr, halfWidthMeters, heading - 90);
+      const rightPoint = window.google.maps.geometry.spherical.computeOffset(curr, halfWidthMeters, heading + 90);
+      left.push(leftPoint);
+      right.push(rightPoint);
+    }
+    // polygon path: left side forward + right side reversed
+    const rightReversed = right.slice().reverse();
+    const polygonCoords = left.concat(rightReversed).map((pt) => ({ lat: pt.lat(), lng: pt.lng() }));
+    return polygonCoords;
+  }
+
+  // Enfileira pontos para snap (chamado a cada novo GPS)
+  function enqueueSnapPoint(pt) {
+    snapQueueRef.current.push(pt);
+    if (snapQueueRef.current.length >= SNAP_BATCH_SIZE) {
+      // dispara imediatamente
+      flushSnapQueue();
+      return;
+    }
+    // caso contrário, agendar flush após SNAP_DELAY_MS
+    if (snapTimerRef.current) clearTimeout(snapTimerRef.current);
+    snapTimerRef.current = setTimeout(() => {
+      flushSnapQueue();
+    }, SNAP_DELAY_MS);
+  }
+
+  async function flushSnapQueue() {
+    if (!snapQueueRef.current || snapQueueRef.current.length === 0) return;
+    const batch = snapQueueRef.current.splice(0, snapQueueRef.current.length);
+    if (batch.length === 0) return;
+    const snapped = await snapToRoadsBatch(batch);
+    if (snapped && snapped.length > 0) {
+      // mesclar snapped com routeSnapped mantendo ordem e evitando duplicatas próximas
+      setRouteSnapped((prev) => {
+        const merged = prev.concat(snapped);
+        // opcional: remover pontos duplicados muito próximos
+        const filtered = [];
+        for (let p of merged) {
+          if (filtered.length === 0) filtered.push(p);
+          else {
+            const last = filtered[filtered.length - 1];
+            if (haversineMeters(last, p) > 0.6) filtered.push(p); // > 0.6m
+          }
+        }
+        // atualizar polygon com base no filtered
+        const polygonCoords = createRoadPolygonFromPath(filtered, ROAD_HALF_WIDTH_METERS);
+        setRoadPolygon(polygonCoords);
+        return filtered;
+      });
+    } else {
+      // se snap falhar, usamos o batch raw (fallback)
+      setRouteSnapped((prev) => {
+        const merged = prev.concat(batch);
+        const polygonCoords = createRoadPolygonFromPath(merged, ROAD_HALF_WIDTH_METERS);
+        setRoadPolygon(polygonCoords);
+        return merged;
+      });
+    }
+  }
+
+  // ------------------ TRACKING ------------------
   const beginTrackingImmediate = () => {
     if (!navigator.geolocation) return alert("Geolocalização não suportada pelo navegador.");
-    setRoute([]); setDistance(0); setElapsedSeconds(0);
+    setRoute([]); setRouteSnapped([]); setRoadPolygon([]); setDistance(0); setElapsedSeconds(0);
 
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
@@ -215,12 +334,14 @@ export default function Mapa() {
             if (boostExpiresAt && now < boostExpiresAt) {
               meters = meters * 2; // dobra a quilometragem contabilizada
             } else if (boostExpiresAt && now >= boostExpiresAt) {
-              // boost expirou: limpa estado
               setBoostExpiresAt(null);
             }
 
             setDistance((d) => d + meters);
           }
+
+          // enfileira para snap
+          enqueueSnapPoint(coords);
 
           if (mapRef.current) mapRef.current.panTo(coords);
           return newRoute;
@@ -240,21 +361,17 @@ export default function Mapa() {
 
   // Novo: overlay/contagem
   const [countdownVisible, setCountdownVisible] = useState(false);
-  const [countdownValue, setCountdownValue] = useState(""); // "3","2","1","GO"
+  const [countdownValue, setCountdownValue] = useState("");
   const countdownTimersRef = useRef([]);
 
-  // Função que inicia a contagem animada e só depois chama beginTrackingImmediate
   const startWithCountdown = () => {
-    // já está rastreando: ignora
     if (tracking) return;
-    // limpa timers anteriores caso haja
     countdownTimersRef.current.forEach((t) => clearTimeout(t));
     countdownTimersRef.current = [];
 
     const sequence = ["3", "2", "1", "GO"];
     setCountdownVisible(true);
 
-    // cada item dura ~900ms (800 anim + 100 buffer)
     sequence.forEach((label, idx) => {
       const t = setTimeout(() => {
         setCountdownValue(label);
@@ -262,7 +379,6 @@ export default function Mapa() {
       countdownTimersRef.current.push(t);
     });
 
-    // no final, esconde e inicia rastreamento real
     const finalTimeout = setTimeout(() => {
       setCountdownVisible(false);
       setCountdownValue("");
@@ -273,7 +389,6 @@ export default function Mapa() {
   };
 
   const endDuelAndReport = (reason = "final") => {
-    // limpa timers do duelo
     if (duelTimerRef.current) { clearInterval(duelTimerRef.current); duelTimerRef.current = null; }
     if (duelEndTimeoutRef.current) { clearTimeout(duelEndTimeoutRef.current); duelEndTimeoutRef.current = null; }
 
@@ -282,9 +397,7 @@ export default function Mapa() {
 
     setDuelActive(false);
 
-    // comparar e notificar
     if (reason === "stopped") {
-      // duelo cancelado/encerrado prematuramente
       alert(`Duelo encerrado. Você: ${(playerMeters/1000).toFixed(2)} km • Oponente: ${(opponentMeters/1000).toFixed(2)} km`);
     } else {
       if (playerMeters > opponentMeters) {
@@ -296,7 +409,6 @@ export default function Mapa() {
       }
     }
 
-    // limpa estados do duelo (mantemos histórico do adversário por um pequeno tempo visualmente)
     setTimeout(() => {
       setDuelOpponent(null);
       setDuelOpponentDistance(0);
@@ -305,7 +417,6 @@ export default function Mapa() {
   };
 
   const stopTracking = () => {
-    // se estava no countdown, cancelar contagem
     if (countdownTimersRef.current.length > 0) {
       countdownTimersRef.current.forEach((t) => clearTimeout(t));
       countdownTimersRef.current = [];
@@ -317,7 +428,6 @@ export default function Mapa() {
     if (timerRef.current !== null) { clearInterval(timerRef.current); timerRef.current = null; }
     setTracking(false);
 
-    // se existia um duelo em andamento, encerra e reporta
     if (duelActive) {
       endDuelAndReport("stopped");
     }
@@ -337,21 +447,17 @@ export default function Mapa() {
 
   /* ---------- INVENTÁRIO: ação ao usar item (nome não começa com 'use') ---------- */
   const handleUseInventoryItem = (itemId) => {
-    // procura item
     const it = inventoryItems.find((i) => i.id === itemId);
     if (!it || it.qty <= 0) {
       alert("Item indisponível.");
       return;
     }
 
-    // decrementa qty
     setInventoryItems((list) => list.map((x) => (x.id === itemId ? { ...x, qty: Math.max(0, x.qty - 1) } : x)));
 
-    // efeitos específicos
     if (itemId === "boost_x2") {
-      const expires = Date.now() + 1000 * 3600; // 1h
+      const expires = Date.now() + 1000 * 3600;
       setBoostExpiresAt(expires);
-      // opcional: timer para notificar quando expirar
       setTimeout(() => {
         setBoostExpiresAt((prev) => (prev === expires ? null : prev));
       }, 1000 * 3600);
@@ -364,7 +470,6 @@ export default function Mapa() {
       }, 1000 * 3600);
       alert("Escudo ativado por 1 hora! Você está protegido contra pareamento em batalhas.");
     } else {
-      // efeito genérico (p.ex., poção)
       setBattleLog((l) => [`Usou ${it.name}`, ...l]);
       alert(`${it.name} usado.`);
     }
@@ -373,7 +478,6 @@ export default function Mapa() {
 
   /* ---------- MISSÕES: atualiza progresso com base em distanceKm ---------- */
   useEffect(() => {
-    // atualiza completude das missões sempre que a distância muda
     setMissions((ms) =>
       ms.map((m) => {
         if (m.completed) return m;
@@ -390,7 +494,6 @@ export default function Mapa() {
   };
 
   const startSearchingBattle = () => {
-    // se protegido, avisa e não inicia
     const now = Date.now();
     if (shieldExpiresAt && now < shieldExpiresAt) {
       alert("Você está protegido por um Escudo e não pode ser pareado agora.");
@@ -400,11 +503,9 @@ export default function Mapa() {
     setSearchingBattle(true);
     setMatchedOpponent(null);
 
-    // simula busca: delay aleatório entre 2s e 6s
     const delayMs = 2000 + Math.floor(Math.random() * 4000);
 
     matchmakingTimerRef.current = setTimeout(() => {
-      // se durante a busca o shield foi ativado, bloqueia
       const now2 = Date.now();
       if (shieldExpiresAt && now2 < shieldExpiresAt) {
         setSearchingBattle(false);
@@ -412,7 +513,6 @@ export default function Mapa() {
         return;
       }
 
-      // sucesso no pareamento: cria um oponente fake
       const opponent = {
         id: "op_" + Math.floor(Math.random() * 10000),
         name: selectedMode === "Casual" ? "Henrique" : "Thiago",
@@ -435,25 +535,20 @@ export default function Mapa() {
   const acceptMatchAndStartDuel = () => {
     if (!matchedOpponent) return;
 
-    // fecha matchmaking
     setMatchmakingOpen(false);
 
-    // marca oponente do duelo
     setDuelOpponent(matchedOpponent);
     setMatchedOpponent(null);
 
-    // inicializa variáveis do duelo
     setDuelOpponentDistance(0);
     setDuelSecondsElapsed(0);
     setDuelActive(true);
 
-    // limpa timers prévios se houver
     if (duelTimerRef.current) clearInterval(duelTimerRef.current);
     if (duelEndTimeoutRef.current) clearTimeout(duelEndTimeoutRef.current);
 
-    // Simula o oponente andando: a cada 1s incrementa por uma velocidade aleatória (entre 0.8 e 1.7 m/s)
     duelTimerRef.current = setInterval(() => {
-      const speed = 0.8 + Math.random() * 0.9; // ~0.8 - 1.7 m/s
+      const speed = 0.8 + Math.random() * 0.9;
       setDuelOpponentDistance((d) => {
         const next = d + speed;
         duelOpponentDistanceRef.current = next;
@@ -462,14 +557,11 @@ export default function Mapa() {
       setDuelSecondsElapsed((s) => s + 1);
     }, 1000);
 
-    // Agenda término automático após DUEL_DURATION_SECONDS
     duelEndTimeoutRef.current = setTimeout(() => {
-      // encerra e compara, usando refs para obter valores atualizados
       if (duelTimerRef.current) { clearInterval(duelTimerRef.current); duelTimerRef.current = null; }
       duelEndTimeoutRef.current = null;
       setDuelActive(false);
 
-      // ler valores atualizados
       const finalPlayer = distanceRef.current || 0;
       const finalOpponent = duelOpponentDistanceRef.current || 0;
 
@@ -481,7 +573,6 @@ export default function Mapa() {
         alert(`Empate! ${ (finalPlayer/1000).toFixed(2) } km × ${ (finalOpponent/1000).toFixed(2) } km`);
       }
 
-      // limpa estado do duelo
       setTimeout(() => {
         setDuelOpponent(null);
         setDuelOpponentDistance(0);
@@ -492,10 +583,8 @@ export default function Mapa() {
 
   const declineMatch = () => {
     setMatchedOpponent(null);
-    // por enquanto apenas cancela
   };
 
-  // batalha: mantive as ações simples caso queira manter log (não usado no duelo)
   const handleBattleAction = (action) => {
     if (!battleActive) {
       setBattleActive(true);
@@ -513,12 +602,10 @@ export default function Mapa() {
       return;
     }
 
-    // inimigo revida
     const enemyDmg = Math.floor(Math.random() * 18) + 4;
     setPlayerHp((h) => Math.max(0, h - enemyDmg));
     setBattleLog((l) => [`Inimigo revidou e causou ${enemyDmg} de dano.`, ...l]);
 
-    // checa fim imediato
     setTimeout(() => {
       setEnemyHp((hp) => {
         if (hp <= 0) {
@@ -592,11 +679,33 @@ export default function Mapa() {
             }}
           />
         )}
-        {route.length > 1 && (
+
+        {/* ROAD POLYGON (preenchimento estilo waze) */}
+        {roadPolygon && roadPolygon.length > 2 && (
+          <Polygon
+            paths={roadPolygon}
+            options={{
+              strokeOpacity: 0.0,
+              fillColor: "#00e5ff",
+              fillOpacity: 0.16,
+              clickable: false,
+              zIndex: 2,
+            }}
+          />
+        )}
+
+        {/* faixa estilo Waze: sombra + faixa interna */}
+        {(routeSnapped.length > 1 || route.length > 1) && (
           <>
-            {/* faixa estilo Waze: sombra + faixa interna */}
-            <Polyline path={route} options={{ strokeColor: "#0a0a0a", strokeWeight: 16, strokeOpacity: 0.65, geodesic: false }} />
-            <Polyline path={route} options={{ strokeColor: "#00e5ff", strokeWeight: 10, strokeOpacity: 0.95, geodesic: false }} />
+            {/* sombra larga (vai por cima do polygon para dar borda escura) */}
+            <Polyline
+              path={routeSnapped.length > 1 ? routeSnapped : route}
+              options={{ strokeColor: "#0a0a0a", strokeWeight: 16, strokeOpacity: 0.75, geodesic: false, zIndex: 5 }}
+            />
+            <Polyline
+              path={routeSnapped.length > 1 ? routeSnapped : route}
+              options={{ strokeColor: "#00e5ff", strokeWeight: 10, strokeOpacity: 0.98, geodesic: false, zIndex: 6 }}
+            />
           </>
         )}
       </GoogleMap>
@@ -612,30 +721,27 @@ export default function Mapa() {
             justifyContent: "center",
             alignItems: "center",
             zIndex: 4000,
-            pointerEvents: "none", // permite toque passar para botões se precisar (mas evita clicar na contagem)
+            pointerEvents: "none",
           }}
         >
           <div
-            className={`countdown-item ${countdownValue === "GO" ? "go" : ""}`}
-            key={countdownValue}
-            style={{
-              fontFamily: "'Cinzel', 'Georgia', serif",
-              fontWeight: 900,
-              // responsive font-size: clamp(min, preferred, max)
-              fontSize: "clamp(48px, 18vw, 220px)",
-              lineHeight: 1,
-              color: countdownValue === "GO" ? "#00FFCC" : "#ffd27a",
-              textShadow: "0 6px 30px rgba(0,0,0,0.7), 0 2px 6px rgba(0,0,0,0.6)",
-              transformOrigin: "center",
-              userSelect: "none",
-              pointerEvents: "none",
-              animation: "pop 820ms cubic-bezier(.2,.9,.2,1)",
-              // small glow for GO
-              boxShadow: countdownValue === "GO" ? "0 20px 60px rgba(0,255,204,0.12), 0 6px 18px rgba(0,0,0,0.6) inset" : "none",
-            }}
-          >
-            {countdownValue}
-          </div>
+  className={`countdown-item ${countdownValue === "GO" ? "go" : ""}`}
+  key={countdownValue}
+  style={{
+    fontFamily: "'Cinzel', 'Georgia', serif",
+    fontWeight: 900,
+    fontSize: "clamp(48px, 18vw, 220px)",
+    lineHeight: 1,
+    color: countdownValue === "GO" ? "#00FFCC" : "#ffd27a",
+    textShadow: "0 6px 30px rgba(0,0,0,0.7), 0 2px 6px rgba(0,0,0,0.6)",
+    transformOrigin: "center",
+    userSelect: "none",
+    pointerEvents: "none",
+    animation: "pop 820ms cubic-bezier(.2,.9,.2,1)",
+  }}
+>
+  {countdownValue}
+</div>
         </div>
       )}
 
@@ -773,13 +879,11 @@ export default function Mapa() {
           position: "fixed",
         }}>
           <svg width="50" height="50" viewBox="0 0 100 100">
-            {/* Espada 1 */}
             <g transform="rotate(-45 50 50)">
               <rect x="47" y="20" width="6" height="50" fill="#c0c0c0" stroke="#808080" strokeWidth="1.5" />
               <polygon points="50,15 44,20 56,20" fill="#e0e0e0" stroke="#808080" strokeWidth="1.5" />
               <rect x="43" y="68" width="14" height="8" fill="#8b6f47" stroke="#4a2f1a" strokeWidth="1.5" />
             </g>
-            {/* Espada 2 */}
             <g transform="rotate(45 50 50)">
               <rect x="47" y="20" width="6" height="50" fill="#c0c0c0" stroke="#808080" strokeWidth="1.5" />
               <polygon points="50,15 44,20 56,20" fill="#e0e0e0" stroke="#808080" strokeWidth="1.5" />
@@ -794,7 +898,7 @@ export default function Mapa() {
             style={{
               position: "fixed",
               bottom: "30px",
-              right: "-10px", // distância da borda direita
+              right: "-10px",
               padding: "12px 24px",
               borderRadius: "25px",
               background: tracking
@@ -947,7 +1051,6 @@ export default function Mapa() {
       </div>
 
       <div>
-        {/* botão USAR em branco conforme solicitado */}
         <button
           onClick={() => handleUseInventoryItem(it.id)}
           style={{
@@ -1003,7 +1106,7 @@ export default function Mapa() {
         </div>
       )}
 
-      {/* MATCHMAKING / BATTLE SEARCH MODAL - LAYOUT AJUSTADO: botão em linha separada */}
+      {/* MATCHMAKING / BATTLE SEARCH MODAL */}
       {matchmakingOpen && (
         <div className="modal-backdrop" onClick={() => { setMatchmakingOpen(false); cancelSearchingBattle(); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ width: "min(680px,94%)", background: "linear-gradient(180deg,#2b1a12 0%,#3b2818 100%)", border: "3px solid #d4af37", borderRadius: 12, padding: 18, color: "#d4af37", fontFamily: "'Cinzel', 'Georgia', serif" }}>
@@ -1012,9 +1115,7 @@ export default function Mapa() {
               <button onClick={() => { setMatchmakingOpen(false); cancelSearchingBattle(); }} style={{ background: "transparent", border: "none", color: "#d4af37", fontSize: 22, cursor: "pointer" }}>×</button>
             </div>
 
-            {/* Conteúdo reorganizado em coluna: modos em cima, ação (buscar) em linha abaixo, depois status/resultado */}
             <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-              {/* Linha superior: seleção de modo */}
               <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <label style={{ fontSize: 13, color: "#e8d7b0" }}>Modo:</label>
@@ -1025,7 +1126,6 @@ export default function Mapa() {
                 </div>
               </div>
 
-              {/* Linha de ação: botão BUSCAR ocupa 100% da largura */}
               <div>
                 {!searchingBattle && !matchedOpponent && (
                   <button onClick={startSearchingBattle} style={{ width: "100%", padding: "12px 14px", borderRadius: 8, background: "#d4af37", border: "1px solid #2b1a12", cursor: "pointer", fontWeight: 700, color: "#2b1a12" }}>
@@ -1046,7 +1146,6 @@ export default function Mapa() {
                 )}
               </div>
 
-              {/* Linha de resultado: aparece após a busca (aceitar/recusar) */}
               <div>
                 {matchedOpponent && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "stretch", justifyContent: "center", padding: 12, borderRadius: 8, background: "rgba(0,0,0,0.12)", border: "1px solid rgba(139,111,71,0.12)" }}>
@@ -1056,7 +1155,6 @@ export default function Mapa() {
                     </div>
 
                     <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 6 }}>
-                      {/* botões Aceitar/Recusar em branco com texto escuro */}
                       <button onClick={acceptMatchAndStartDuel} style={{ padding: "8px 12px", borderRadius: 8, background: "#09c003ff", border: "1px solid rgba(0,0,0,0.08)", cursor: "pointer", fontWeight: 700, color: "#ffffffff" }}>
                         Aceitar
                       </button>
@@ -1074,7 +1172,7 @@ export default function Mapa() {
         </div>
       )}
 
-      {/* BATTLE MODAL (mantido para compatibilidade, mas normalmente não será usado no novo fluxo) */}
+      {/* BATTLE MODAL (mantido) */}
       {battleOpen && (
         <div className="modal-backdrop" onClick={() => { setBattleOpen(false); setBattleActive(false); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000 }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ width: "min(720px, 96%)", background: "linear-gradient(180deg,#2b1a12 0%,#3b2818 100%)", border: "3px solid #d4af37", borderRadius: 12, padding: 18, color: "#d4af37", fontFamily: "'Cinzel', 'Georgia', serif" }}>
@@ -1119,7 +1217,6 @@ export default function Mapa() {
   @keyframes fadeInUp { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* animação pop usada na contagem */
   @keyframes popScale {
     0% { transform: scale(0.2); opacity: 0; filter: blur(6px); }
     40% { transform: scale(1.08); opacity: 1; filter: blur(0); }
@@ -1133,7 +1230,6 @@ export default function Mapa() {
     animation-timing-function: cubic-bezier(.2,.9,.2,1);
   }
 
-  /* backdrop geral: centraliza e permite padding para mobile */
   .modal-backdrop {
     display: flex;
     justify-content: center;
@@ -1142,12 +1238,11 @@ export default function Mapa() {
     box-sizing: border-box;
   }
 
-  /* conteúdo dos modais: caixa flutuante, com limites de tamanho e scroll interno */
   .modal-content {
-    width: 720px;                 /* tamanho base para desktop */
-    max-width: calc(100% - 48px); /* sempre respeita a tela */
-    max-height: 80vh;             /* nunca ultrapassa 80% da altura da tela */
-    overflow: auto;               /* scroll interno se necessário */
+    width: 720px;
+    max-width: calc(100% - 48px);
+    max-height: 80vh;
+    overflow: auto;
     box-sizing: border-box;
     border-radius: 12px;
     padding: 18px;
@@ -1158,60 +1253,51 @@ export default function Mapa() {
     box-shadow: 0 10px 40px rgba(0,0,0,0.7);
   }
 
-  /* se você usa estilos inline nos elementos, esta regra garante overflow dentro dos painéis */
   .modal-content .scrollable {
     overflow: auto;
     max-height: 64vh;
   }
 
-  /* inventário: grid padrão 2 colunas */
   .modal-content .inventory-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 12px;
   }
 
-  /* botões dentro do modal: toca facil no mobile */
   .modal-content button {
     min-height: 44px;
     min-width: 64px;
   }
 
-  /* MOBILE: caixas continuam flutuantes, mas mais estreitas e mais altas (sem ocupar 100% da tela) */
   @media (max-width: 430px) {
     .modal-backdrop {
       align-items: center;
       padding: 10px;
     }
     .modal-content {
-      width: calc(100% - 24px); /* bem encaixado à margem lateral */
+      width: calc(100% - 24px);
       max-width: calc(100% - 24px);
-      max-height: 86vh;         /* permite barra de status / notch */
+      max-height: 86vh;
       border-radius: 10px;
       padding: 14px;
     }
 
-    /* Inventário: 1 coluna para melhor leitura */
     .modal-content .inventory-grid {
       grid-template-columns: 1fr;
     }
 
-    /* reduz gaps em áreas com muitas linhas para caber melhor */
     .modal-content { gap: 10px; }
 
-    /* aumenta legibilidade dos títulos e botões */
     .modal-content h1, .modal-content h2, .modal-content h3 {
       font-size: 18px;
     }
 
-    /* garante que botões brancos com texto escuro fiquem legíveis e com padding maior */
     .modal-content button {
       padding: 12px 14px !important;
       font-size: 16px !important;
     }
   }
 
-  /*  tablet / médio */
   @media (min-width: 431px) and (max-width: 1024px) {
     .modal-content {
       width: min(720px, 92%);
@@ -1223,4 +1309,3 @@ export default function Mapa() {
     </div>
   );
 }
-
