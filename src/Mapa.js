@@ -190,8 +190,9 @@ export default function Mapa() {
     };
   }, []);
 
-  // Timer do tracking
-  const startTracking = () => {
+  // Timer do tracking (iniciado apenas pelo beginTrackingImmediate)
+  // ---------- MOVED: beginTrackingImmediate contém a lógica real que antes estava em startTracking ----------
+  const beginTrackingImmediate = () => {
     if (!navigator.geolocation) return alert("Geolocalização não suportada pelo navegador.");
     setRoute([]); setDistance(0); setElapsedSeconds(0);
 
@@ -237,6 +238,40 @@ export default function Mapa() {
     setMenuOpen(false);
   };
 
+  // Novo: overlay/contagem
+  const [countdownVisible, setCountdownVisible] = useState(false);
+  const [countdownValue, setCountdownValue] = useState(""); // "3","2","1","GO"
+  const countdownTimersRef = useRef([]);
+
+  // Função que inicia a contagem animada e só depois chama beginTrackingImmediate
+  const startWithCountdown = () => {
+    // já está rastreando: ignora
+    if (tracking) return;
+    // limpa timers anteriores caso haja
+    countdownTimersRef.current.forEach((t) => clearTimeout(t));
+    countdownTimersRef.current = [];
+
+    const sequence = ["3", "2", "1", "GO"];
+    setCountdownVisible(true);
+
+    // cada item dura ~900ms (800 anim + 100 buffer)
+    sequence.forEach((label, idx) => {
+      const t = setTimeout(() => {
+        setCountdownValue(label);
+      }, idx * 900);
+      countdownTimersRef.current.push(t);
+    });
+
+    // no final, esconde e inicia rastreamento real
+    const finalTimeout = setTimeout(() => {
+      setCountdownVisible(false);
+      setCountdownValue("");
+      countdownTimersRef.current = [];
+      beginTrackingImmediate();
+    }, sequence.length * 900);
+    countdownTimersRef.current.push(finalTimeout);
+  };
+
   const endDuelAndReport = (reason = "final") => {
     // limpa timers do duelo
     if (duelTimerRef.current) { clearInterval(duelTimerRef.current); duelTimerRef.current = null; }
@@ -270,6 +305,14 @@ export default function Mapa() {
   };
 
   const stopTracking = () => {
+    // se estava no countdown, cancelar contagem
+    if (countdownTimersRef.current.length > 0) {
+      countdownTimersRef.current.forEach((t) => clearTimeout(t));
+      countdownTimersRef.current = [];
+      setCountdownVisible(false);
+      setCountdownValue("");
+    }
+
     if (watchId.current !== null) { navigator.geolocation.clearWatch(watchId.current); watchId.current = null; }
     if (timerRef.current !== null) { clearInterval(timerRef.current); timerRef.current = null; }
     setTracking(false);
@@ -558,6 +601,44 @@ export default function Mapa() {
         )}
       </GoogleMap>
 
+      {/* Contagem animada overlay */}
+      {countdownVisible && (
+        <div
+          aria-live="polite"
+          style={{
+            position: "fixed",
+            inset: 0,
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 4000,
+            pointerEvents: "none", // permite toque passar para botões se precisar (mas evita clicar na contagem)
+          }}
+        >
+          <div
+            className={`countdown-item ${countdownValue === "GO" ? "go" : ""}`}
+            key={countdownValue}
+            style={{
+              fontFamily: "'Cinzel', 'Georgia', serif",
+              fontWeight: 900,
+              // responsive font-size: clamp(min, preferred, max)
+              fontSize: "clamp(48px, 18vw, 220px)",
+              lineHeight: 1,
+              color: countdownValue === "GO" ? "#00FFCC" : "#ffd27a",
+              textShadow: "0 6px 30px rgba(0,0,0,0.7), 0 2px 6px rgba(0,0,0,0.6)",
+              transformOrigin: "center",
+              userSelect: "none",
+              pointerEvents: "none",
+              animation: "pop 820ms cubic-bezier(.2,.9,.2,1)",
+              // small glow for GO
+              boxShadow: countdownValue === "GO" ? "0 20px 60px rgba(0,255,204,0.12), 0 6px 18px rgba(0,0,0,0.6) inset" : "none",
+            }}
+          >
+            {countdownValue}
+          </div>
+        </div>
+      )}
+
       {/* AVATAR */}
       <div
         style={{
@@ -580,8 +661,8 @@ export default function Mapa() {
       {/* Painel info (tempo, km, pontos, calorias) */}
       <div style={{
         position: "fixed", top: "20px", right: "20px", background: "linear-gradient(180deg, rgba(45,24,16,0.95) 0%, rgba(31,15,8,0.95) 100%)",
-        padding: "12px 18px", borderRadius: "8px", border: "2px solid #8b6f47", boxShadow: "0 4px 15px rgba(0,0,0,0.6)",
-        fontFamily: "'Cinzel', 'Georgia', serif", color: "#d4af37", fontSize: "14px", minWidth: "180px", zIndex: 1000,
+        padding: "12px 18px", borderRadius: "12px", border: "2px solid #8b6f47", boxShadow: "0 4px 15px rgba(0,0,0,0.6)",
+        fontFamily: "'Cinzel', 'Georgia', serif", color: "#d4af37", fontSize: "14px", minWidth: "100px", zIndex: 1000,
       }}>
         <div style={{ marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
           <span>⏱️</span><span style={{ fontWeight: "bold" }}>{formatElapsed(elapsedSeconds)}</span>
@@ -709,7 +790,7 @@ export default function Mapa() {
 
         {!menuOpen && (
           <div
-            onClick={tracking ? stopTracking : startTracking}
+            onClick={tracking ? stopTracking : startWithCountdown}
             style={{
               position: "fixed",
               bottom: "30px",
@@ -896,7 +977,7 @@ export default function Mapa() {
         <div className="modal-backdrop" onClick={() => setQuestsOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ width: "min(640px, 94%)", background: "linear-gradient(180deg,#2b1a12 0%,#3b2818 100%)", border: "3px solid #d4af37", borderRadius: 12, padding: 18, color: "#d4af37", fontFamily: "'Cinzel', 'Georgia', serif" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <div style={{ fontSize: 20, fontWeight: 700, color: "#ffd27a" }}>Missões</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#ffd27a" }}>Missões Diárias</div>
               <button onClick={() => setQuestsOpen(false)} style={{ background: "transparent", border: "none", color: "#d4af37", fontSize: 22, cursor: "pointer" }}>×</button>
             </div>
 
@@ -1009,7 +1090,7 @@ export default function Mapa() {
                 <div style={{ marginTop: 8 }}>HP: <span style={{ color: "#ffd27a", fontWeight: 700 }}>{enemyHp}</span></div>
               </div>
 
-              <div style={{ flex: 1, padding: 12, borderRadius: 8, background: "rgba(0,0,0,0.12)", border: "1px solid rgba(139,111,71,0.12)" }}>
+                            <div style={{ flex: 1, padding: 12, borderRadius: 8, background: "rgba(0,0,0,0.12)", border: "1px solid rgba(139,111,71,0.12)" }}>
                 <div style={{ fontSize: 13, color: "#e8d7b0" }}>Você</div>
                 <div style={{ fontWeight: 700, color: "#ffd27a", fontSize: 18 }}>Aventureiro</div>
                 <div style={{ marginTop: 8 }}>HP: <span style={{ color: "#ffd27a", fontWeight: 700 }}>{playerHp}</span></div>
@@ -1037,6 +1118,20 @@ export default function Mapa() {
   @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&display=swap');
   @keyframes fadeInUp { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* animação pop usada na contagem */
+  @keyframes popScale {
+    0% { transform: scale(0.2); opacity: 0; filter: blur(6px); }
+    40% { transform: scale(1.08); opacity: 1; filter: blur(0); }
+    70% { transform: scale(0.96); }
+    100% { transform: scale(1); }
+  }
+
+  .countdown-item {
+    animation-name: popScale;
+    animation-duration: 820ms;
+    animation-timing-function: cubic-bezier(.2,.9,.2,1);
+  }
 
   /* backdrop geral: centraliza e permite padding para mobile */
   .modal-backdrop {
@@ -1128,3 +1223,4 @@ export default function Mapa() {
     </div>
   );
 }
+
